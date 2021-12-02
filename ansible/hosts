@@ -1,0 +1,4 @@
+vm10 ansible_host=172.25.0.10
+
+[db]
+vm10

@@ -1,0 +1,89 @@
+- name: Installation playbook
+  hosts: db
+  become: true
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Install MySQL
+      yum:
+          name: ['mariadb', 'mariadb-server']
+          state: latest
+
+    - name: Start MySQL service
+      service:
+        name: mariadb
+        state: started
+        enabled: yes
+
+    - name: Install PyMySQL python package
+      pip:
+        name: PyMySQL
+
+    # 'localhost' needs to be the last item for idempotency, see
+    # http://ansible.cc/docs/modules.html#mysql-user
+    - name: update mysql root password for all root accounts
+      mysql_user: 
+        name=root
+        host={{ item }}
+        password={{ mysql_root_password }}
+      with_items:
+        - "{{ ansible_hostname }}"
+        - 127.0.0.1
+        - ::1
+        - localhost
+
+    - name: Copy .my.cnf
+      template:
+        src: my.cnf.j2
+        dest: /root/.my.cnf
+        owner: root
+        group: root
+        mode: 0600
+      tags: 
+        - config
+
+    - name: delete anonymous MySQL server user for $ansible_host
+      action: mysql_user user="" host="{{ ansible_host }}" state="absent"
+
+    - name: delete anonymous MySQL server user for localhost
+      action: mysql_user user="" state="absent"
+
+    - name: remove the MySQL test database
+      action: mysql_db db=test state=absent
+
+    - name: Simple select query to db
+      community.mysql.mysql_query:
+        login_db: mysql
+        query: SELECT version()
+
+    - mysql_user:
+        name: testuser
+        password: '{{ user_db_pass }}'
+        state: present
+      tags: 
+        - db_mysql
+          
+    - name: Create db
+      mysql_db:
+        name: testdb
+        state: present
+      tags: 
+        - db_mysql
+  
+    - name: Grant privileges
+      community.mysql.mysql_query:
+        login_db: mysql
+        query: 
+        - GRANT ALL PRIVILEGES ON testdb.* TO testuser IDENTIFIED BY '{{ user_db_pass }}';
+        - FLUSH PRIVILEGES;
+        single_transaction: yes
+      tags: 
+        - db_mysql
+
+    - name: Apply new configs
+      service:
+        name: mariadb
+        state: restarted
+      tags:
+        - config

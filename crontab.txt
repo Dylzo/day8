@@ -1,0 +1,3 @@
+# Из под рута
+echo "@midnight /home/dzorenko/day8/backup.sh 2>&1 >> /var/log/backupsh.log" >> /var/spool/cron/root
+service crond reload
